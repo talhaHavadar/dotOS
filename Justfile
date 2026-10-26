@@ -28,12 +28,12 @@ bootc $image_name=image_name $image_tag=image_tag *ARGS:
         -v "{{base_dir}}:/data" \
         "${image_name}-bootc:${image_tag}" bootc {{ARGS}}
 
-disk-image $image_name=image_name $image_tag=image_tag $base_dir=base_dir $filesystem=filesystem:
+disk-image $image_name=image_name $image_tag=image_tag $base_dir=base_dir $filesystem=filesystem *ARGS:
     #!/usr/bin/env bash
     if [ ! -e "${base_dir}/bootable.img" ] ; then
         fallocate -l 20G "${base_dir}/bootable.img"
     fi
-    just bootc $image_name $image_tag install to-disk --composefs-backend --via-loopback /data/bootable.img --filesystem "${filesystem}" --wipe --bootloader systemd
+    just bootc $image_name $image_tag install to-disk --composefs-backend --via-loopback /data/bootable.img --filesystem "${filesystem}" --wipe --bootloader systemd {{ARGS}}
 
 rechunk $image_name=image_name:
     #!/usr/bin/env bash
