@@ -28,7 +28,7 @@ RUN --mount=type=tmpfs,dst=/var --mount=type=tmpfs,dst=/tmp --mount=type=tmpfs,d
 RUN systemctl disable systemd-networkd.service systemd-networkd.socket systemd-networkd-wait-online.service && \
     systemctl mask systemd-networkd.service systemd-networkd.socket systemd-networkd-wait-online.service && \
     rm -f /etc/netplan/90-default.yaml && \
-    systemctl enable NetworkManager.service wpa_supplicant.service
+    systemctl enable NetworkManager.service wpa_supplicant.service flatpak-add-flathub.service
 
 RUN systemctl enable gdm3 && systemctl set-default graphical.target
 

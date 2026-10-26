@@ -1,0 +1,14 @@
+[Unit]
+Description=Add the Flathub Flatpak remote
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecCondition=/bin/sh -c '! /usr/bin/flatpak remotes --system --columns=name | grep -qx flathub'
+ExecStart=/usr/bin/flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
