@@ -8,6 +8,7 @@ sudo
 podman
 
 # Hardware firmware
+firmware-amd-graphics
 firmware-mediatek
 
 # Desktop Environment
