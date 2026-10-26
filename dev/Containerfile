@@ -14,10 +14,12 @@ RUN --mount=type=tmpfs,dst=/var --mount=type=tmpfs,dst=/tmp --mount=type=tmpfs,d
     --mount=type=cache,dst=/var/cache/apt,sharing=locked \
     --mount=type=cache,dst=/var/lib/apt/lists,sharing=locked \
     --mount=type=bind,source=dev/packages.txt,target=/run/packages.txt \
-    mkdir -p /var/lib /var/log/apt /var/roothome && \
+    mkdir -p /var/lib/sgml-base /var/lib/xml-core /var/log/apt /var/roothome && \
     ln -s /usr/lib/sysimage/dpkg /var/lib/dpkg && \
     apt-get update -y && \
     INITRD=No apt-get install -y --no-install-recommends $(grep -v -E '^\s*(#|$)' /run/packages.txt)
+
+RUN systemctl enable gdm3 && systemctl set-default graphical.target
 
 RUN --mount=type=bind,source=dev/scripts/setup-nix.sh,target=/ctx/setup-nix.sh \
     /ctx/setup-nix.sh

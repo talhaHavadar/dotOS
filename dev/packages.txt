@@ -6,3 +6,19 @@ nix-bin
 nix-setup-systemd
 sudo
 podman
+
+# Desktop Environment
+gnome-session
+gnome-shell
+gdm3
+gnome-terminal
+nautilus
+gnome-control-center
+gnome-text-editor
+xdg-desktop-portal-gnome
+gnome-backgrounds
+adwaita-icon-theme
+fonts-cantarell
+gvfs
+mesa-vulkan-drivers
+xwayland
