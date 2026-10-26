@@ -1,0 +1,18 @@
+# The image root is read-only, so the Nix store lives in /var and is bound
+# onto /nix. Mounted before tmpfiles so nix-daemon.conf can create its dirs.
+[Unit]
+Description=Persistent Nix store
+DefaultDependencies=no
+Requires=nix-store-setup.service
+After=nix-store-setup.service
+Before=local-fs.target systemd-tmpfiles-setup.service umount.target
+Conflicts=umount.target
+
+[Mount]
+What=/var/lib/nix
+Where=/nix
+Type=none
+Options=bind
+
+[Install]
+WantedBy=local-fs.target

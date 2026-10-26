@@ -1,0 +1,7 @@
+# Extra Debian packages for the dev image (one per line).
+# Installed with apt at build time; apt cannot install anything at runtime.
+dracut-network
+ignition
+nix-bin
+nix-setup-systemd
+sudo

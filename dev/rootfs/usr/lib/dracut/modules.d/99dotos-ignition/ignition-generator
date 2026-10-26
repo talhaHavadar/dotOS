@@ -1,0 +1,32 @@
+#!/bin/bash
+# Replaces Debian's ignition-generator: Ignition is enabled by
+# ignition.platform.id alone (no ignition.firstboot, which systemd-boot would
+# keep on every boot). Re-runs are stopped by the marker checked in
+# 10-dotos-gate.conf instead.
+
+set -e
+
+exec 1>/dev/kmsg; exec 2>&1
+
+UNIT_DIR="${1:-/tmp}"
+
+platform=""
+for arg in $(</proc/cmdline); do
+    if [[ "${arg%%=*}" == "ignition.platform.id" ]]; then
+        platform="${arg#*=}"
+    fi
+done
+
+add_requires() {
+    local name="$1" target="$2"
+    mkdir -p "${UNIT_DIR}/${target}.requires"
+    ln -sf "../${name}" "${UNIT_DIR}/${target}.requires/${name}"
+}
+
+if [[ -n "${platform}" ]]; then
+    add_requires ignition-complete.target initrd.target
+else
+    add_requires ignition-subsequent.target initrd.target
+fi
+
+echo "PLATFORM_ID=${platform}" > /run/ignition.env

@@ -1,0 +1,11 @@
+[Unit]
+Description=Create the persistent Nix store directory
+DefaultDependencies=no
+RequiresMountsFor=/var/lib
+Before=nix.mount
+ConditionPathIsDirectory=!/var/lib/nix
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/mkdir -p -m 0755 /var/lib/nix

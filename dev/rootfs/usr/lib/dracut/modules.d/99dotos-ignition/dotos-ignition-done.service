@@ -1,0 +1,14 @@
+[Unit]
+Description=Mark Ignition provisioning as done
+DefaultDependencies=false
+ConditionPathExists=/etc/initrd-release
+ConditionPathExists=!/sysroot/var/lib/dotos/ignition.done
+Requires=ignition-files.service
+After=ignition-files.service
+Before=ignition-complete.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/mkdir -p /sysroot/var/lib/dotos
+ExecStart=/usr/bin/touch /sysroot/var/lib/dotos/ignition.done

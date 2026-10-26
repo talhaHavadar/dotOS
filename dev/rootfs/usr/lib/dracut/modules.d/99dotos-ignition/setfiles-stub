@@ -1,0 +1,4 @@
+#!/bin/sh
+# Debian's Ignition is built with SELinux relabeling always on; there is no
+# policy to apply in this image, so relabeling is a no-op.
+exit 0

@@ -1,0 +1,35 @@
+ARG BASE_IMAGE=ghcr.io/talhahavadar/dotos-base:latest
+
+FROM ${BASE_IMAGE}
+
+COPY dev/rootfs/ /
+
+RUN --mount=type=bind,source=dev/scripts/nix-users.sh,target=/ctx/nix-users.sh \
+    /ctx/nix-users.sh
+
+# /var stays empty in the image: here it is a tmpfs holding only the link to
+# base's dpkg database (/usr/lib/sysimage/dpkg) and the apt caches.
+# INITRD=No: the initramfs is rebuilt once, below.
+RUN --mount=type=tmpfs,dst=/var --mount=type=tmpfs,dst=/tmp --mount=type=tmpfs,dst=/boot \
+    --mount=type=cache,dst=/var/cache/apt,sharing=locked \
+    --mount=type=cache,dst=/var/lib/apt/lists,sharing=locked \
+    --mount=type=bind,source=dev/packages.txt,target=/run/packages.txt \
+    mkdir -p /var/lib /var/log/apt /var/roothome && \
+    ln -s /usr/lib/sysimage/dpkg /var/lib/dpkg && \
+    apt-get update -y && \
+    INITRD=No apt-get install -y --no-install-recommends $(grep -v -E '^\s*(#|$)' /run/packages.txt)
+
+RUN --mount=type=bind,source=dev/scripts/setup-nix.sh,target=/ctx/setup-nix.sh \
+    /ctx/setup-nix.sh
+
+# Rebuild the initramfs with Ignition (see 99dotos-ignition)
+# (/root links to /var/roothome; /var is a tmpfs here and stays empty)
+RUN --mount=type=tmpfs,dst=/tmp --mount=type=tmpfs,dst=/var \
+    --mount=type=bind,source=scripts/initramfs.sh,target=/ctx/initramfs.sh \
+    mkdir -p /var/roothome /var/tmp && \
+    /ctx/initramfs.sh
+
+# /var is machine state on bootc; nothing from the build may remain there
+RUN find /var -mindepth 1 -delete
+
+RUN bootc container lint
