@@ -1,8 +1,8 @@
 #!/bin/bash
-# Replaces Debian's ignition-generator: Ignition is enabled by
-# ignition.platform.id alone (no ignition.firstboot, which systemd-boot would
-# keep on every boot). Re-runs are stopped by the marker checked in
-# 10-dotos-gate.conf instead.
+# Replaces Debian's ignition-generator: Ignition always runs, on
+# ignition.platform.id or "metal" if unset (no ignition.firstboot, which
+# systemd-boot would keep on every boot). Re-runs are stopped by the marker
+# checked in 10-dotos-gate.conf instead.
 
 set -e
 
@@ -23,10 +23,8 @@ add_requires() {
     ln -sf "../${name}" "${UNIT_DIR}/${target}.requires/${name}"
 }
 
-if [[ -n "${platform}" ]]; then
-    add_requires ignition-complete.target initrd.target
-else
-    add_requires ignition-subsequent.target initrd.target
-fi
+# Defaults to bare metal; the marker (not the karg) stops re-runs
+platform="${platform:-metal}"
+add_requires ignition-complete.target initrd.target
 
 echo "PLATFORM_ID=${platform}" > /run/ignition.env

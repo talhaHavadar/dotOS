@@ -1,6 +1,6 @@
 #!/bin/bash
 # Adapts Debian's ignition dracut module to a bootc composefs root:
-# - runs Ignition whenever ignition.platform.id is on the kernel command line,
+# - runs Ignition on ignition.platform.id (default: metal),
 #   but only until it has succeeded once (marker in the persistent /var)
 # - every stage runs after bootc-root-setup has mounted the deployment's
 #   /etc and /var, so users and files land in persistent state
@@ -23,6 +23,12 @@ install() {
     # `command` because this function shadows install(1)
     command install -D -m 0755 "$moddir/ignition-generator" \
         "${initdir}${systemdutildir}/system-generators/ignition-generator"
+
+    # Configs baked into the image (e.g. base.platform.d/metal/*.ign)
+    local cfg
+    for cfg in /usr/lib/ignition/base.d/* /usr/lib/ignition/base.platform.d/*/*; do
+        [[ -f "$cfg" ]] && inst_simple "$cfg"
+    done
 
     local unit
     for unit in ignition-disks.service ignition-kargs.service ignition-remount-sysroot.service; do
