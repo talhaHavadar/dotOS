@@ -46,6 +46,14 @@ RUN --mount=type=tmpfs,dst=/tmp --mount=type=tmpfs,dst=/root \
     --mount=type=bind,from=ctx,source=/,target=/ctx \
     /ctx/scripts/initramfs.sh
 
+# /var is machine state on bootc and is wiped below, so the dpkg database moves
+# into the image (like rpm-ostree's /usr/lib/sysimage/rpm). Derived images can
+# apt-get install at build time; at runtime /usr is read-only, so dpkg can be
+# queried but nothing can be installed.
+RUN mkdir -p /usr/lib/sysimage && \
+    mv /var/lib/dpkg /usr/lib/sysimage/dpkg && \
+    printf 'L /var/lib/dpkg - - - - /usr/lib/sysimage/dpkg\n' > /usr/lib/tmpfiles.d/dpkg-sysimage.conf
+
 RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     sed -i 's|^HOME=.*|HOME=/var/home|' "/etc/default/useradd" && \
     /ctx/scripts/bootc-rootfs.sh

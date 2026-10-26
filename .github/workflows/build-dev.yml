@@ -1,0 +1,46 @@
+name: Build dev image
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "dev/**"
+      - "scripts/initramfs.sh"
+      - "Justfile"
+      - ".github/workflows/build-dev.yml"
+      - ".github/workflows/build-image.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "dev/**"
+      - "scripts/initramfs.sh"
+      - "Justfile"
+      - ".github/workflows/build-dev.yml"
+      - ".github/workflows/build-image.yml"
+  # Rebuild on every new base (including the weekly one) so dev picks it up
+  workflow_run:
+    workflows:
+      - Build base image
+    types:
+      - completed
+    branches:
+      - main
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    # Only after a base build that succeeded and was pushed (not a PR build)
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event != 'pull_request')
+    uses: ./.github/workflows/build-image.yml
+    permissions:
+      contents: read
+      packages: write
+    # dev/Containerfile builds FROM the published ghcr.io/<owner>/<repo>-base:latest
+    with:
+      image: dev

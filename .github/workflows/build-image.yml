@@ -1,0 +1,91 @@
+name: Build image (reusable)
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: Image directory to build with `just build` (base, dev, ...)
+        required: true
+        type: string
+      build-args:
+        description: Extra arguments for the container build, e.g. --build-arg X=Y
+        required: false
+        type: string
+        default: ""
+env:
+  IMAGE: ${{ inputs.image }}
+  IMAGE_REGISTRY: "ghcr.io/${{ github.repository_owner }}"
+  # Published as <repo>-<image>, e.g. dotos-base
+  IMAGE_NAME: "${{ github.event.repository.name }}-${{ inputs.image }}"
+  CONTAINER_RUNTIME: podman
+  # Where buildah/podman keep RUN --mount=type=cache data when building as root
+  BUILDAH_CACHE_DIR: /var/tmp/buildah-cache-0
+jobs:
+  build:
+    name: Build ${{ inputs.image }} image
+    # Needs buildah >= 1.39 (podman >= 5.4): older versions leave bind-mounted
+    # scripts out of the layer cache key, so script changes would not rebuild
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Prepare environment
+        run: |
+          # Registry paths must be lowercase
+          echo "IMAGE_REGISTRY=${IMAGE_REGISTRY,,}" >> "$GITHUB_ENV"
+          echo "IMAGE_NAME=${IMAGE_NAME,,}" >> "$GITHUB_ENV"
+          echo "DATE_TAG=$(date -u +%Y%m%d)" >> "$GITHUB_ENV"
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Maximize build space
+        uses: ublue-os/remove-unwanted-software@v9
+        if: false
+      - name: Install just
+        uses: extractions/setup-just@v4
+      # The build runs as root (`sudo podman` via the Justfile), so root needs
+      # the registry credentials for the layer cache, base images and the push.
+      - name: Login to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+      # Layer 1: RUN --mount=type=cache directories (apt debs/lists, rustup,
+      # cargo registry, cargo target dir). These survive even when the
+      # debian:unstable base digest changes, which invalidates every layer.
+      - name: Restore build mount cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.BUILDAH_CACHE_DIR }}
+          key: ${{ runner.os }}-${{ runner.arch }}-buildah-${{ inputs.image }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-buildah-${{ inputs.image }}-
+      # Layer 2: registry layer cache. Whole layers are reused while the base
+      # image digest and instructions are unchanged (e.g. only a late script
+      # changed). PRs only read from it.
+      - name: Build image
+        run: |
+          CACHE_IMAGE="${IMAGE_REGISTRY}/${IMAGE_NAME}-cache"
+          CACHE_ARGS=(--layers --cache-from "$CACHE_IMAGE")
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            CACHE_ARGS+=(--cache-to "$CACHE_IMAGE")
+          fi
+
+          just build "$IMAGE" "${CACHE_ARGS[@]}" ${{ inputs.build-args }}
+      - name: Fix cache permissions
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -d "$BUILDAH_CACHE_DIR" ]; then
+            sudo chown -R "$(id -u):$(id -g)" "$BUILDAH_CACHE_DIR"
+          fi
+      # Saved even if the build failed, so a long cargo build is not lost
+      - name: Save build mount cache
+        if: ${{ !cancelled() }}
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.BUILDAH_CACHE_DIR }}
+          key: ${{ runner.os }}-${{ runner.arch }}-buildah-${{ inputs.image }}-${{ github.run_id }}
+      - name: Push to GHCR
+        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        run: |
+          for tag in latest "$DATE_TAG"; do
+            sudo podman push "${IMAGE}-bootc:latest" "docker://${IMAGE_REGISTRY}/${IMAGE_NAME}:${tag}"
+          done
