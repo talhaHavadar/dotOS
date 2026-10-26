@@ -32,7 +32,9 @@ concurrency:
 jobs:
   build:
     name: Build base image
-    runs-on: ubuntu-24.04
+    # Needs buildah >= 1.39 (podman >= 5.4): older versions leave bind-mounted
+    # scripts out of the layer cache key, so script changes would not rebuild
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       packages: write
