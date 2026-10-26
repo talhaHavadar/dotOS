@@ -1,0 +1,29 @@
+{
+  "ignition": {
+    "version": "3.3.0"
+  },
+  "passwd": {
+    "users": [
+      {
+        "name": "talha",
+        "passwordHash": "$6$eyF4tuxm26f.OkS7$4h2uoDZgM6pSPUc8kScGTvd4zp7Pk4xe7/l.hsBzKVX6f0ZFOw7XfUbxNTBtiQEDfksS3VcJgU8N9wKiI2dlA.",
+        "groups": [
+          "sudo",
+          "nix-users"
+        ],
+        "sshAuthorizedKeys": [
+          "sk-ssh-ed25519@openssh.com AAAAGnNrLXNzaC1lZDI1NTE5QG9wZW5zc2guY29tAAAAIMY5feCinZlqei2cxEh6TOhNE9e41/nSvrz1z94bNzKaAAAABHNzaDo= yubikey-mobil-rk"
+        ]
+      }
+    ]
+  },
+  "systemd": {
+    "units": [
+      {
+        "name": "talha-user-expire-password.service",
+        "enabled": true,
+        "contents": "[Unit]\nDescription=Force password change for talha user on first login\nConditionPathExists=!/var/lib/talha-user-expired\nAfter=local-fs.target\n\n[Service]\nType=oneshot\nExecStart=/usr/bin/chage -d 0 talha\nExecStartPost=/usr/bin/touch /var/lib/talha-user-expired\nRemainAfterExit=yes\n\n[Install]\nWantedBy=multi-user.target\n"
+      }
+    ]
+  }
+}

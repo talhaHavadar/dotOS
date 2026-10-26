@@ -1,0 +1,24 @@
+# Desktop packages for the dev image (one per line).
+# Installed WITH recommends, unlike packages.txt.
+# Networking
+network-manager
+wpasupplicant
+wireless-regdb
+rfkill
+iw
+
+# Desktop Environment
+gnome-session
+gnome-shell
+gdm3
+gnome-terminal
+nautilus
+gnome-control-center
+gnome-text-editor
+xdg-desktop-portal-gnome
+gnome-backgrounds
+adwaita-icon-theme
+fonts-cantarell
+gvfs
+mesa-vulkan-drivers
+xwayland

@@ -17,10 +17,18 @@ RUN --mount=type=tmpfs,dst=/var --mount=type=tmpfs,dst=/tmp --mount=type=tmpfs,d
     --mount=type=cache,dst=/var/cache/apt,sharing=locked \
     --mount=type=cache,dst=/var/lib/apt/lists,sharing=locked \
     --mount=type=bind,source=dev/packages.txt,target=/run/packages.txt \
+    --mount=type=bind,source=dev/desktop-packages.txt,target=/run/desktop-packages.txt \
     mkdir -p /var/lib/sgml-base /var/lib/xml-core /var/log/apt /var/roothome && \
     ln -s /usr/lib/sysimage/dpkg /var/lib/dpkg && \
     apt-get update -y && \
-    INITRD=No apt-get install -y --no-install-recommends $(grep -v -E '^\s*(#|$)' /run/packages.txt)
+    INITRD=No apt-get install -y --no-install-recommends $(grep -v -E '^\s*(#|$)' /run/packages.txt) && \
+    INITRD=No apt-get install -y $(grep -v -E '^\s*(#|$)' /run/desktop-packages.txt)
+
+# NetworkManager replaces base's systemd-networkd/netplan; resolved stays as the DNS backend
+RUN systemctl disable systemd-networkd.service systemd-networkd.socket systemd-networkd-wait-online.service && \
+    systemctl mask systemd-networkd.service systemd-networkd.socket systemd-networkd-wait-online.service && \
+    rm -f /etc/netplan/90-default.yaml && \
+    systemctl enable NetworkManager.service wpa_supplicant.service
 
 RUN systemctl enable gdm3 && systemctl set-default graphical.target
 
