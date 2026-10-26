@@ -14,8 +14,9 @@ sudo_prefix := if env("NOSUDO", "") == "" { "sudo " } else { "" }
 test IMAGE=image_name:
     just bcvk build-and-test {{IMAGE}}
 
-build $image_name=image_name:
-    {{sudo_prefix}}{{container_runtime}} build -f {{image_name}}/Containerfile -t "${image_name}-bootc:latest" .
+# Extra ARGS are passed to the container build (e.g. --cache-from/--cache-to in CI)
+build $image_name=image_name *ARGS:
+    {{sudo_prefix}}{{container_runtime}} build {{ARGS}} -f {{image_name}}/Containerfile -t "${image_name}-bootc:latest" .
 
 bootc $image_name=image_name $image_tag=image_tag *ARGS:
     sudo {{container_runtime}} run \
