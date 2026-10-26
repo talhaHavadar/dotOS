@@ -7,6 +7,9 @@ COPY dev/rootfs/ /
 RUN --mount=type=bind,source=dev/scripts/nix-users.sh,target=/ctx/nix-users.sh \
     /ctx/nix-users.sh
 
+# Vendor firmware (e.g. MediaTek MT7925 Bluetooth/Wi-Fi) lives in non-free-firmware
+RUN sed -i 's/^Components: main$/Components: main non-free-firmware/' /etc/apt/sources.list.d/debian.sources
+
 # /var stays empty in the image: here it is a tmpfs holding only the link to
 # base's dpkg database (/usr/lib/sysimage/dpkg) and the apt caches.
 # INITRD=No: the initramfs is rebuilt once, below.

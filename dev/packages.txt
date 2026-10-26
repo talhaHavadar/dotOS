@@ -7,6 +7,9 @@ nix-setup-systemd
 sudo
 podman
 
+# Hardware firmware
+firmware-mediatek
+
 # Desktop Environment
 gnome-session
 gnome-shell
