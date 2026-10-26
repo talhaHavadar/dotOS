@@ -6,6 +6,7 @@ nix-bin
 nix-setup-systemd
 sudo
 podman
+network-manager
 
 # Hardware firmware
 firmware-amd-graphics
