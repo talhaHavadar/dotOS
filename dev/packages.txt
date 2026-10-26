@@ -5,3 +5,4 @@ ignition
 nix-bin
 nix-setup-systemd
 sudo
+podman
