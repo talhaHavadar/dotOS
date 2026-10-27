@@ -9,6 +9,7 @@ podman
 flatpak
 openssh-client
 openssh-server
+uidmap
 
 # Hardware firmware
 firmware-amd-graphics
