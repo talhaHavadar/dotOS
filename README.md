@@ -1,5 +1,17 @@
 # dotOS
 
+## Make a bootable Image
+
+Following commands allows you to create a `bootable.img` file which you can easily flash it into an installation medium and use it to boot into customized bootc image.
+
+```shell
+# crates bootable.img file using bootc container for dotos-dev variant
+just disk-image ghcr.io/talhahavadar/dotos-dev
+# use rpi-imager to flash it into the block device
+# use lsblk to identify the medium
+rpi-imager --cli bootable.img <block device>
+```
+
 ## How to build?
 
 `dev` images currently uses the published `base` images in github container registry. If you want to use locally build base image please change the Containerfile accordingly and then you can build as usual shown below.
