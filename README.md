@@ -20,6 +20,7 @@ rpi-imager --cli bootable.img <block device>
 just build dev
 # if not in an SELINUX system set BUILD_SELINUX to false
 # To build for QEMU which allows ignition customization
+# use ignition.platform.id=metal for default metal config or omit the ignition.platform.id completely
 BUILD_SELINUX=false just disk-image dev latest . ext4 --karg ignition.platform.id=qemu --karg console=ttyS0
 
 # run the image in qemu to test
@@ -30,6 +31,15 @@ qemu-system-x86_64 -machine q35 -accel kvm -cpu host -m 4G -smp 4 \
    -nic user,model=virtio-net-pci,hostfwd=tcp::2222-:22 \
    -fw_cfg name=opt/com.coreos/config,file=$PWD/test.ign \
    -nographic
+
+# Do you have qemu from nix?
+FW=$(dirname $(dirname $(readlink -f $(which qemu-system-x86_64))))/share/qemu/edk2-x86_64-code.fd
+# boot with default metal config
+qemu-system-x86_64 -machine q35 -accel kvm -cpu host -m 4G -smp 4 \
+    -drive if=pflash,format=raw,readonly=on,file="$FW" \
+    -drive file=bootable.img,format=raw,if=virtio \
+    -nic user,model=virtio-net-pci,hostfwd=tcp::2222-:22 \
+    -nographic
 ```
 
 ### Ignition customization
