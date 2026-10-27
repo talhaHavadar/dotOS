@@ -26,7 +26,7 @@
         "group": { "name": "talha" },
         "append": [
           {
-            "source": "data:,%0Aupdate-home%28%29%20%7B%0A%20%20%20%20make%20-C%20%22%24HOME%2F.config%2Fdotfiles%22%20home-manager%0A%7D%0A"
+            "source": "data:,%0Aupdate-home%28%29%20%7B%0A%20%20%20%20NIX_MYUSER=talha%20make%20-C%20%22%24HOME%2F.config%2Fdotfiles%22%20home-manager%0A%7D%0A"
           }
         ]
       }
