@@ -11,3 +11,9 @@ flatpak
 # Hardware firmware
 firmware-amd-graphics
 firmware-mediatek
+
+# Development
+git
+gnupg
+scdaemon
+yubikey-manager
