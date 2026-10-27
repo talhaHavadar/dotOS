@@ -5,6 +5,9 @@ image_tag := env("BUILD_IMAGE_TAG", "latest")
 base_dir := env("BUILD_BASE_DIR", ".")
 filesystem := env("BUILD_FILESYSTEM", "ext4")
 selinux := env("BUILD_SELINUX", "true")
+# Stamped into os-release (VERSION_ID, BUILD_ID) and the image labels
+version := env("BUILD_VERSION", `date -u +%Y%m%d`)
+commit := env("BUILD_COMMIT", `git rev-parse --short HEAD 2>/dev/null || true`)
 
 options := if selinux == "true" { "-v /var/lib/containers:/var/lib/containers:Z -v /etc/containers:/etc/containers:Z -v /sys/fs/selinux:/sys/fs/selinux --security-opt label=type:unconfined_t" } else { "-v /var/lib/containers:/var/lib/containers -v /etc/containers:/etc/containers" }
 container_runtime := env("CONTAINER_RUNTIME", `command -v podman >/dev/null 2>&1 && echo podman || echo docker`)
@@ -16,7 +19,7 @@ test IMAGE=image_name:
 
 # Extra ARGS are passed to the container build (e.g. --cache-from/--cache-to in CI)
 build $image_name=image_name *ARGS:
-    {{sudo_prefix}}{{container_runtime}} build {{ARGS}} -f {{image_name}}/Containerfile -t "${image_name}-bootc:latest" .
+    {{sudo_prefix}}{{container_runtime}} build --build-arg "DOTOS_VERSION={{version}}" --build-arg "DOTOS_COMMIT={{commit}}" {{ARGS}} -f {{image_name}}/Containerfile -t "${image_name}-bootc:latest" .
 
 bootc $image_name=image_name $image_tag=image_tag *ARGS:
     sudo {{container_runtime}} run \

@@ -1,6 +1,7 @@
 FROM scratch AS ctx
 
 COPY ../scripts/ /scripts
+COPY base/branding/ /branding
 
 FROM docker.io/library/debian:unstable AS base
 
@@ -42,6 +43,11 @@ RUN systemctl enable systemd-networkd systemd-resolved ssh && \
     printf 'network:\n  version: 2\n  ethernets:\n    all-en:\n      match:\n        name: en*\n      dhcp4: true\n      dhcp4-overrides:\n        use-domains: true\n      dhcp6: true\n      dhcp6-overrides:\n        use-domains: true\n    all-eth:\n      match:\n        name: eth*\n      dhcp4: true\n      dhcp4-overrides:\n        use-domains: true\n      dhcp6: true\n      dhcp6-overrides:\n        use-domains: true\n' > /etc/netplan/90-default.yaml && \
     sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config || true
 
+# dotOS identity (os-release, issue, motd); before the initramfs, which embeds os-release
+RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
+    /ctx/scripts/branding.sh /ctx/branding && \
+    /ctx/scripts/os-release.sh variant base Base
+
 RUN --mount=type=tmpfs,dst=/tmp --mount=type=tmpfs,dst=/root \
     --mount=type=bind,from=ctx,source=/,target=/ctx \
     /ctx/scripts/initramfs.sh
@@ -58,6 +64,17 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     sed -i 's|^HOME=.*|HOME=/var/home|' "/etc/default/useradd" && \
     /ctx/scripts/bootc-rootfs.sh
 
-LABEL containers.bootc 1
+# Set by `just build`; declared late so a new version only rebuilds from here
+ARG DOTOS_VERSION
+ARG DOTOS_COMMIT=""
+RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
+    /ctx/scripts/os-release.sh version "${DOTOS_VERSION:?set by just build}" "${DOTOS_COMMIT}"
+
+LABEL containers.bootc="1" \
+      org.opencontainers.image.title="dotOS Base" \
+      org.opencontainers.image.description="Minimal bootc base image of dotOS, built on Debian unstable" \
+      org.opencontainers.image.source="https://github.com/talhaHavadar/dotOS" \
+      org.opencontainers.image.version="${DOTOS_VERSION}" \
+      org.opencontainers.image.revision="${DOTOS_COMMIT}"
 
 RUN bootc container lint

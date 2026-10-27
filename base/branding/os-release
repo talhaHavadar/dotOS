@@ -1,0 +1,17 @@
+# dotOS identity, installed as /usr/lib/os-release by scripts/branding.sh.
+# Added at build time:
+#   VERSION_CODENAME                     Debian's codename (scripts/branding.sh)
+#   VARIANT, VARIANT_ID, IMAGE_ID,
+#   PRETTY_NAME, VERSION, VERSION_ID,
+#   IMAGE_VERSION, BUILD_ID              per image layer (scripts/os-release.sh)
+NAME="dotOS"
+ID=dotos
+ID_LIKE=debian
+HOME_URL="https://github.com/talhaHavadar/dotOS"
+DOCUMENTATION_URL="https://github.com/talhaHavadar/dotOS#readme"
+SUPPORT_URL="https://github.com/talhaHavadar/dotOS/issues"
+BUG_REPORT_URL="https://github.com/talhaHavadar/dotOS/issues"
+# Debian's logo until dotOS has its own; the icon comes with desktop layers (desktop-base)
+LOGO=emblem-debian
+ANSI_COLOR="1;36"
+DEFAULT_HOSTNAME=dotos

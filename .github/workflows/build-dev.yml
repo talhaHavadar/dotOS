@@ -6,6 +6,7 @@ on:
     paths:
       - "dev/**"
       - "scripts/initramfs.sh"
+      - "scripts/os-release.sh"
       - "Justfile"
       - ".github/workflows/build-dev.yml"
       - ".github/workflows/build-image.yml"
@@ -15,6 +16,7 @@ on:
     paths:
       - "dev/**"
       - "scripts/initramfs.sh"
+      - "scripts/os-release.sh"
       - "Justfile"
       - ".github/workflows/build-dev.yml"
       - ".github/workflows/build-image.yml"

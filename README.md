@@ -16,6 +16,8 @@ rpi-imager --cli bootable.img <block device>
 
 `dev` images currently uses the published `base` images in github container registry. If you want to use locally build base image please change the Containerfile accordingly and then you can build as usual shown below.
 
+### Building
+
 ```shell
 just build dev
 # if not in an SELINUX system set BUILD_SELINUX to false

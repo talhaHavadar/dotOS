@@ -87,7 +87,8 @@ jobs:
             CACHE_ARGS+=(--build-arg "BASE_IMAGE=${IMAGE_REGISTRY}/${GITHUB_EVENT_REPOSITORY_NAME,,}-base:${VERSION_TAG}")
           fi
 
-          just build "$IMAGE" "${CACHE_ARGS[@]}" ${{ inputs.build-args }}
+          # os-release VERSION_ID matches the pushed date tag
+          BUILD_VERSION="$DATE_TAG" just build "$IMAGE" "${CACHE_ARGS[@]}" ${{ inputs.build-args }}
       - name: Fix cache permissions
         if: ${{ !cancelled() }}
         run: |
