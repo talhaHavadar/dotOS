@@ -6,6 +6,7 @@
     "users": [
       {
         "name": "talha",
+        "shell": "/bin/bash",
         "passwordHash": "$6$eyF4tuxm26f.OkS7$4h2uoDZgM6pSPUc8kScGTvd4zp7Pk4xe7/l.hsBzKVX6f0ZFOw7XfUbxNTBtiQEDfksS3VcJgU8N9wKiI2dlA.",
         "groups": [
           "sudo",
