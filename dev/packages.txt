@@ -9,6 +9,7 @@ podman
 flatpak
 openssh-client
 openssh-server
+python3-venv
 
 # Hardware firmware
 firmware-amd-graphics
