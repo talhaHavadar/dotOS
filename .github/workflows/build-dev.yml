@@ -26,9 +26,10 @@ on:
       - completed
     branches:
       - main
+      - "v*"
   workflow_dispatch:
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch || github.ref }}
   cancel-in-progress: true
 jobs:
   build:
@@ -41,6 +42,9 @@ jobs:
     permissions:
       contents: read
       packages: write
-    # dev/Containerfile builds FROM the published ghcr.io/<owner>/<repo>-base:latest
+    # dev/Containerfile builds FROM the published ghcr.io/<owner>/<repo>-base (:latest, or the same tag for tag builds)
     with:
       image: dev
+      # Tag builds of base (head_branch is the tag name) produce a tagged dev
+      ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || '' }}
+      version-tag: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && startsWith(github.event.workflow_run.head_branch, 'v') && github.event.workflow_run.head_branch || '' }}

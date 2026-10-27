@@ -9,6 +9,8 @@ on:
       - "Justfile"
       - ".github/workflows/build-base.yml"
       - ".github/workflows/build-image.yml"
+    tags:
+      - "v*"
   pull_request:
     branches:
       - main
@@ -32,3 +34,4 @@ jobs:
       packages: write
     with:
       image: base
+      version-tag: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
