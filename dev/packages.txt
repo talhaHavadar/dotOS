@@ -10,6 +10,7 @@ flatpak
 openssh-client
 openssh-server
 uidmap
+socat
 
 # Hardware firmware
 firmware-amd-graphics
