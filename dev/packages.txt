@@ -7,6 +7,8 @@ nix-setup-systemd
 sudo
 podman
 flatpak
+openssh-client
+openssh-server
 
 # Hardware firmware
 firmware-amd-graphics
