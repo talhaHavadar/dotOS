@@ -45,4 +45,8 @@ RUN --mount=type=tmpfs,dst=/tmp --mount=type=tmpfs,dst=/var \
 # /var is machine state on bootc; nothing from the build may remain there
 RUN find /var -mindepth 1 -delete
 
+# No machine-id makes the first boot a systemd "first boot": PID1 then applies
+# the preset file Ignition writes for units with "enabled": true.
+RUN rm -f /etc/machine-id
+
 RUN bootc container lint
