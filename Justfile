@@ -26,7 +26,7 @@ bootc $image_name=image_name $image_tag=image_tag *ARGS:
         -v /dev:/dev \
         -e RUST_LOG=debug \
         -v "{{base_dir}}:/data" \
-        "${image_name}-bootc:${image_tag}" bootc {{ARGS}}
+        {{ if image_name =~ '/' { if image_name =~ ':[^/]+$' { image_name } else { image_name + ":" + image_tag } } else { image_name + "-bootc:" + image_tag } }} bootc {{ARGS}}
 
 disk-image $image_name=image_name $image_tag=image_tag $base_dir=base_dir $filesystem=filesystem *ARGS:
     #!/usr/bin/env bash
