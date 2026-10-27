@@ -24,11 +24,23 @@ RUN --mount=type=tmpfs,dst=/var --mount=type=tmpfs,dst=/tmp --mount=type=tmpfs,d
     INITRD=No apt-get install -y --no-install-recommends $(grep -v -E '^\s*(#|$)' /run/packages.txt) && \
     INITRD=No apt-get install -y $(grep -v -E '^\s*(#|$)' /run/desktop-packages.txt)
 
+# Tailscale's official installer adds its apt repo and installs the package.
+# Service start/enable failures are tolerated (no running systemd at build time);
+# tailscaled is enabled explicitly below.
+RUN --mount=type=tmpfs,dst=/var --mount=type=tmpfs,dst=/tmp --mount=type=tmpfs,dst=/boot \
+    --mount=type=cache,dst=/var/cache/apt,sharing=locked \
+    --mount=type=cache,dst=/var/lib/apt/lists,sharing=locked \
+    mkdir -p /var/lib/sgml-base /var/lib/xml-core /var/log/apt /var/roothome && \
+    ln -s /usr/lib/sysimage/dpkg /var/lib/dpkg && \
+    apt-get update -y && \
+    INITRD=No apt-get install -y --no-install-recommends ca-certificates curl && \
+    curl -fsSL https://tailscale.com/install.sh | INITRD=No sh
+
 # NetworkManager replaces base's systemd-networkd/netplan; resolved stays as the DNS backend
 RUN systemctl disable systemd-networkd.service systemd-networkd.socket systemd-networkd-wait-online.service && \
     systemctl mask systemd-networkd.service systemd-networkd.socket systemd-networkd-wait-online.service && \
     rm -f /etc/netplan/90-default.yaml && \
-    systemctl enable NetworkManager.service wpa_supplicant.service flatpak-add-flathub.service
+    systemctl enable NetworkManager.service wpa_supplicant.service tailscaled.service flatpak-add-flathub.service
 
 RUN systemctl enable gdm3 && systemctl set-default graphical.target
 
