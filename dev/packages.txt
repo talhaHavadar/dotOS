@@ -11,6 +11,7 @@ openssh-client
 openssh-server
 uidmap
 socat
+passt
 
 # Hardware firmware
 firmware-amd-graphics
