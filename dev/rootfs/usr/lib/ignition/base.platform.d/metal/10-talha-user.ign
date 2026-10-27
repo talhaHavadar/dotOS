@@ -17,8 +17,27 @@
       }
     ]
   },
+  "storage": {
+    "files": [
+      {
+        "path": "/var/home/talha/.bashrc",
+        "user": { "name": "talha" },
+        "group": { "name": "talha" },
+        "append": [
+          {
+            "source": "data:,%0Aupdate-home%28%29%20%7B%0A%20%20%20%20make%20-C%20%22%24HOME%2F.config%2Fdotfiles%22%20home-manager%0A%7D%0A"
+          }
+        ]
+      }
+    ]
+  },
   "systemd": {
     "units": [
+      {
+        "name": "talha-dotfiles-clone.service",
+        "enabled": true,
+        "contents": "[Unit]\nDescription=Clone dotfiles for talha user on first boot\nConditionPathExists=!/var/home/talha/.config/dotfiles\nWants=network-online.target\nAfter=network-online.target local-fs.target\n\n[Service]\nType=oneshot\nUser=talha\nGroup=talha\nExecStartPre=/usr/bin/mkdir -p /var/home/talha/.config\nExecStart=/bin/sh -c 'rm -rf /var/home/talha/.config/dotfiles.tmp && git clone https://github.com/talhaHavadar/dotfiles.git /var/home/talha/.config/dotfiles.tmp && mv /var/home/talha/.config/dotfiles.tmp /var/home/talha/.config/dotfiles'\nRestart=on-failure\nRestartSec=15\nRemainAfterExit=yes\n\n[Install]\nWantedBy=multi-user.target\n"
+      },
       {
         "name": "talha-user-expire-password.service",
         "enabled": true,
