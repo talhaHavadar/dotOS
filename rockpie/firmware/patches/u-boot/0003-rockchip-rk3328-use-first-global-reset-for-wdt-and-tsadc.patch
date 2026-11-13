@@ -1,0 +1,46 @@
+rockchip: rk3328: use the first global reset for WDT and TSADC
+
+The RK3328 resets the SoC with the "second global reset" on a watchdog
+or TSADC (thermal shutdown) event by default. That reset keeps GPIO and
+GRF state, and on a ROCK Pi E v1.21 it hangs the board: no TPL output,
+only a power cycle recovers it. Starting the watchdog from the U-Boot
+prompt (mw.l 0xff1a0000 0xb) hangs with CRU_GLB_CNT_TH at its default
+0x3a980064 and reboots normally with bit 15 set; bit 14 alone does not
+affect the watchdog and is the TSADC counterpart.
+
+Select the first global reset, which normal reboots use, for both
+sources in SPL so it holds for U-Boot and the OS.
+
+Reported for Linux in
+https://lists.infradead.org/pipermail/linux-rockchip/2024-December/053826.html
+Applies to U-Boot v2026.04 (88dc2788).
+
+--- a/arch/arm/mach-rockchip/rk3328/rk3328.c
++++ b/arch/arm/mach-rockchip/rk3328/rk3328.c
+@@ -16,6 +16,11 @@
+ #define FW_DDR_CON_REG		0xFF7C0040
+ #define EFUSE_NS_BASE		0xFF260000
+ 
++#define CRU_GLB_CNT_TH		0x0090
++/* Reset type for TSADC and WDT resets: 0 = second (default), 1 = first */
++#define TSADC_GLB_SRST_FST	BIT(14)
++#define WDT_GLB_SRST_FST	BIT(15)
++
+ #define EFUSE_MOD		0x0000
+ #define EFUSE_INT_CON		0x0014
+ #define EFUSE_T_CSB_P		0x0028
+@@ -88,6 +93,14 @@
+ 	writel(EFUSE_TIMING(1, 4), EFUSE_NS_BASE + EFUSE_T_LOAD_R);
+ 	writel(EFUSE_TIMING(1, 4), EFUSE_NS_BASE + EFUSE_T_ADDR_R);
+ 	writel(EFUSE_TIMING(2, 3), EFUSE_NS_BASE + EFUSE_T_STROBE_R);
++
++	/*
++	 * The second global reset keeps GPIO/GRF state and hangs the board
++	 * (seen on ROCK Pi E): make watchdog and thermal shutdown resets use
++	 * the first global reset, like a normal reboot does.
++	 */
++	reg = readl(CRU_BASE + CRU_GLB_CNT_TH);
++	writel(reg | TSADC_GLB_SRST_FST | WDT_GLB_SRST_FST, CRU_BASE + CRU_GLB_CNT_TH);
+ #endif
+ 	return 0;
+ }
