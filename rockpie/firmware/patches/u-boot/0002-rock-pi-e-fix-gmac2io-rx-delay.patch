@@ -1,0 +1,35 @@
+arm64: dts: rockchip: rock-pi-e: fix gmac2io RX delay
+
+With rx_delay = <0x11> the 1 Gbit port (gmac2io, RTL8211F over RGMII)
+on a ROCK Pi E v1.21 drops 35-45% of large frames on receive: the MAC
+counts thousands of mmc_rx_crc_error per few thousand frames and TCP
+bulk transfers stall. Transmit is unaffected.
+
+Sweeping rx_delay with tx_delay = <0x26> (Linux 6.18, 355 MB HTTP
+downloads, 5000 1400-byte flood pings):
+
+  0x08, 0x12        broken / ~5% loss
+  0x11 (current)    ~40% loss, bulk stalls
+  0x14, 0x22        marginal (CRC errors, 5-37 MB/s)
+  0x16 .. 0x20      0 CRC errors in 500k frames, 110-117 MB/s
+  0x24 and up       no link-level connectivity
+
+Use the middle of the clean window. A soak at 0x1b passed 2.49M frames
+with no CRC errors (3.5 GB received, 600 MB sent). The RTL8211F
+internal delays (rgmii-rxid / rgmii-id) do not work on this board.
+
+The same change is meant for Linux upstream; this copy fixes the DT
+U-Boot passes to the OS on the EFI boot path.
+Applies to U-Boot v2026.04 (88dc2788).
+
+--- a/dts/upstream/src/arm64/rockchip/rk3328-rock-pi-e.dts
++++ b/dts/upstream/src/arm64/rockchip/rk3328-rock-pi-e.dts
+@@ -154,7 +154,7 @@
+ 	pinctrl-names = "default";
+ 	pinctrl-0 = <&rgmiim1_pins>;
+ 	tx_delay = <0x26>;
+-	rx_delay = <0x11>;
++	rx_delay = <0x1b>;
+ 	status = "okay";
+ 
+ 	mdio {
