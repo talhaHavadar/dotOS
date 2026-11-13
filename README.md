@@ -34,6 +34,13 @@ On the board, `dotos-firmware status` shows both slots; after an image update
 that ships new firmware, `dotos-firmware update` writes slot A, and after the
 next good boot `dotos-firmware-commit.service` copies it to slot B.
 
+Firmware versions look like `2026.04-dotos.7.g1a2b3c4`: the U-Boot release,
+the number of commits that changed `rockpie/firmware/` (where every firmware
+input lives), and the last of them (`.dirty` for uncommitted changes).
+`just build` derives it with `scripts/firmware-version.sh`, so it only changes
+when the firmware does, and `dotos-firmware` refuses to install an older one.
+Builds need the full git history.
+
 ## How to build?
 
 `dev` images currently uses the published `base` images in github container registry. If you want to use locally build base image please change the Containerfile accordingly and then you can build as usual shown below.

@@ -1,0 +1,6 @@
+# Firmware sources, pinned by checksum. Release tarballs, not git: without
+# .git U-Boot's version string gets no "+"/"-dirty" suffix.
+UBOOT_VERSION=v2026.04
+UBOOT_SHA256=fcf947fe716e77b698208adb5c2fd7240fc629ca46df8e1ed35d64cbbe42219d
+TFA_VERSION=v2.13.0
+TFA_SHA256=a0798acdac86101019f2e53c80846950c7a658314381c48c39a86f6b9fc70173
