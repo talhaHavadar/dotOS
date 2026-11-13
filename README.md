@@ -12,6 +12,28 @@ just disk-image ghcr.io/talhahavadar/dotos-dev
 rpi-imager --cli bootable.img <block device>
 ```
 
+### Boards with firmware on the boot disk (ROCK Pi E)
+
+Some boards boot their firmware from raw sectors at the start of the disk, so
+the first partition has to start later. `just disk-image-embedded` leaves the
+first 16 MiB free (`EMBEDDED_RESERVED_MIB`), installs with
+`bootc install to-filesystem`, and then runs the image's own
+`dotos-firmware install` to write the A/B firmware slots.
+
+```shell
+# on an arm64 machine (bootc install does not work under qemu-user);
+# the recipe uses sudo for its root steps itself
+just disk-image-embedded ghcr.io/talhahavadar/dotos-rockpie latest .
+# writes ./dotos-rockpie-embedded.img; flash it like any other image
+```
+
+CI builds the same recipe for every `rockpie` build and uploads
+`dotos-rockpie-<date>-arm64.img.zst` as a workflow artifact.
+
+On the board, `dotos-firmware status` shows both slots; after an image update
+that ships new firmware, `dotos-firmware update` writes slot A, and after the
+next good boot `dotos-firmware-commit.service` copies it to slot B.
+
 ## How to build?
 
 `dev` images currently uses the published `base` images in github container registry. If you want to use locally build base image please change the Containerfile accordingly and then you can build as usual shown below.

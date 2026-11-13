@@ -1,0 +1,55 @@
+name: Build rockpie image
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "rockpie/**"
+      - "scripts/initramfs.sh"
+      - "scripts/os-release.sh"
+      - "Justfile"
+      - ".github/workflows/build-rockpie.yml"
+      - ".github/workflows/build-image.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "rockpie/**"
+      - "scripts/initramfs.sh"
+      - "scripts/os-release.sh"
+      - "Justfile"
+      - ".github/workflows/build-rockpie.yml"
+      - ".github/workflows/build-image.yml"
+  # Rebuild on every new base (including the weekly one) so rockpie picks it up
+  workflow_run:
+    workflows:
+      - Build base image
+    types:
+      - completed
+    branches:
+      - main
+      - "v*"
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch || github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    # Only after a base build that succeeded and was pushed (not a PR build)
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event != 'pull_request')
+    uses: ./.github/workflows/build-image.yml
+    permissions:
+      contents: read
+      packages: write
+    # rockpie/Containerfile builds FROM the published ghcr.io/<owner>/<repo>-base
+    # and its firmware stage compiles U-Boot/TF-A natively, so arm64 only
+    with:
+      image: rockpie
+      arches: '["arm64"]'
+      # Tested on every run with `just disk-image-embedded`, uploaded as an artifact
+      disk-image: true
+      ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || '' }}
+      version-tag: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && startsWith(github.event.workflow_run.head_branch, 'v') && github.event.workflow_run.head_branch || '' }}

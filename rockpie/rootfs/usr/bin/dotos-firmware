@@ -1,0 +1,182 @@
+#!/usr/bin/env bash
+# dotos-firmware: two-slot U-Boot management for the Radxa ROCK Pi E (RK3328).
+#
+# Layout (512-byte sectors, all below the first partition at 16 MiB):
+#   slot A  idbloader-a.img @ 64     -> u-boot.itb @ 16384 (8 MiB)   BootROM tries first
+#   slot B  idbloader-b.img @ 1088   -> u-boot.itb @ 24576 (12 MiB)  BootROM fallback
+#   U-Boot env (eMMC) @ 8128..8191, untouched
+#
+# idbloader-a/-b are the same SPL built twice, differing only in
+# CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR (0x4000 / 0x6000), so each slot is a
+# self-contained chain. Slot B always holds the last *confirmed* firmware.
+#
+#   update: write shipped firmware into slot A (header sector last)
+#   commit: after a boot that ran the shipped firmware, copy it into slot B
+#           (dotos-firmware-commit.service runs this on every boot)
+#   install: write both slots (fresh disk / migration from a single-slot layout)
+#
+# Downgrades: update and commit refuse to write firmware older than the running
+# one or the one confirmed in slot B (e.g. after `bootc rollback` to an older
+# image); ALLOW_DOWNGRADE=yes overrides. After an intentional downgrade the
+# boot-time commit fails until it is run once by hand with ALLOW_DOWNGRADE=yes.
+#
+# Protection: an interrupted write leaves slot A without a valid header, so the
+# BootROM boots slot B. A firmware that is valid but broken is NOT caught here;
+# recovery then needs the SD card or maskrom.
+
+set -euo pipefail
+
+FW_DIR=${DOTOS_FW_DIR:-/usr/lib/u-boot/rock-pi-e}
+IDB_A=64      ITB_A=16384
+IDB_B=1088    ITB_B=24576
+IDB_MAX=1024  ITB_MAX=8192   # sectors per idbloader / itb slot
+FIRST_PART_MIN=32768         # first partition must start at >= 16 MiB
+
+die() { echo "dotos-firmware: $*" >&2; exit 1; }
+sectors() { echo $(( ($(stat -c %s "$1") + 511) / 512 )); }
+
+find_disk() {
+    local esp src
+    esp=$(bootctl --print-esp-path 2>/dev/null) || esp=/boot
+    src=$(findmnt -no SOURCE -t vfat --target "$esp") || die "cannot find the ESP"
+    echo "/dev/$(lsblk -no PKNAME "$src")"
+}
+
+check_layout() {
+    local disk=$1 name start min=
+    name=$(basename "$disk")
+    shopt -s nullglob
+    for p in /sys/block/"$name"/"$name"*/start; do
+        start=$(<"$p")
+        if [[ -z $min || $start -lt $min ]]; then min=$start; fi
+    done
+    [[ -n $min && $min -ge $FIRST_PART_MIN ]] ||
+        die "$disk: first partition starts at sector ${min:-?}, below 16 MiB; refusing to write"
+    (( $(sectors "$FW_DIR/idbloader-a.img") <= IDB_MAX )) || die "idbloader-a.img too large"
+    (( $(sectors "$FW_DIR/idbloader-b.img") <= IDB_MAX )) || die "idbloader-b.img too large"
+    (( $(sectors "$FW_DIR/u-boot.itb") <= ITB_MAX )) || die "u-boot.itb too large"
+}
+
+# region_matches <disk> <sector> <file>: on-disk bytes equal the file
+region_matches() {
+    # cmp -s stops at the first difference; quiet the EPIPE from dd/head
+    # (services run with SIGPIPE ignored, so they print instead of dying)
+    dd if="$1" bs=512 skip="$2" count="$(sectors "$3")" iflag=direct status=none 2>/dev/null |
+        head -c "$(stat -c %s "$3")" 2>/dev/null | cmp -s - "$3"
+}
+
+slot_matches() { # <disk> <idb_sector> <itb_sector> <idb_file>
+    region_matches "$1" "$2" "$4" && region_matches "$1" "$3" "$FW_DIR/u-boot.itb"
+}
+
+write_slot() { # <disk> <idb_sector> <itb_sector> <idb_file>
+    local disk=$1 idb=$2 itb=$3 file=$4 w=(conv=notrunc,fsync status=none)
+    echo "writing slot at sector $idb (itb at $itb) on $disk"
+    dd if=/dev/zero of="$disk" bs=512 seek="$idb" count=1 "${w[@]}"   # invalidate header
+    dd if="$FW_DIR/u-boot.itb" of="$disk" bs=512 seek="$itb" "${w[@]}"
+    dd if="$file" of="$disk" bs=512 skip=1 seek=$((idb + 1)) "${w[@]}"
+    dd if="$file" of="$disk" bs=512 count=1 seek="$idb" "${w[@]}"     # commit point
+    blockdev --flushbufs "$disk"
+    slot_matches "$disk" "$idb" "$itb" "$file" || die "verification failed at sector $idb"
+}
+
+running_version() { cat /sys/class/dmi/id/bios_version 2>/dev/null || echo unknown; }
+shipped_version() { cat "$FW_DIR/VERSION"; }
+
+# Versions are U-Boot release strings (2026.04-dotos.2); `sort -V` orders them,
+# so CONFIG_LOCALVERSION must grow monotonically between releases.
+ver_lt() { [[ $1 != "$2" && $(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n1) == "$1" ]]; }
+
+# slot_version <disk> <idb_sector> <itb_sector>: U-Boot version in a slot, read
+# from the banner string inside its FIT; "empty" if the ID block header is gone.
+slot_version() {
+    local v
+    if ! dd if="$1" bs=512 skip="$2" count=1 status=none | tr -d '\0' | grep -q .; then
+        echo empty; return
+    fi
+    v=$(dd if="$1" bs=512 skip="$3" count="$ITB_MAX" status=none 2>/dev/null |
+        grep -a -o -m1 'U-Boot 20[0-9][0-9]\.[0-9][0-9][^ ]* (' | head -n1) || true
+    v=${v#U-Boot }; echo "${v% (}"
+}
+
+# describe <version> <matches-shipped>: one status word for a slot
+describe() {
+    local v=$1 shipped
+    shipped=$(shipped_version)
+    if [[ $2 == yes ]]; then echo "$v (shipped)"
+    elif [[ $v == empty || -z $v ]]; then echo "empty (no valid ID block)"
+    elif [[ $v == "$shipped" ]]; then echo "$v (version shipped, contents differ)"
+    elif ver_lt "$v" "$shipped"; then echo "$v (older than shipped)"
+    else echo "$v (newer than shipped)"
+    fi
+}
+
+# refuse_downgrade <what> <installed version>: stop if the shipped firmware is
+# older than <installed version>, unless ALLOW_DOWNGRADE=yes
+refuse_downgrade() {
+    local shipped
+    shipped=$(shipped_version)
+    [[ $2 == unknown || $2 == empty || -z $2 ]] && return 0
+    ver_lt "$shipped" "$2" || return 0
+    echo "warning: $1 is $2, shipped firmware $shipped is older" >&2
+    [[ ${ALLOW_DOWNGRADE:-} == yes ]] || die "refusing to downgrade; set ALLOW_DOWNGRADE=yes to install $shipped"
+}
+
+cmd_status() {
+    local disk=$1 a=no b=no
+    slot_matches "$disk" $IDB_A $ITB_A "$FW_DIR/idbloader-a.img" && a=yes
+    slot_matches "$disk" $IDB_B $ITB_B "$FW_DIR/idbloader-b.img" && b=yes
+    echo "disk:     $disk"
+    echo "running:  $(running_version)"
+    echo "shipped:  $(shipped_version)"
+    echo "slot A:   $(describe "$(slot_version "$disk" $IDB_A $ITB_A)" $a)"
+    echo "slot B:   $(describe "$(slot_version "$disk" $IDB_B $ITB_B)" $b), fallback"
+}
+
+cmd_update() {
+    local disk=$1
+    if slot_matches "$disk" $IDB_A $ITB_A "$FW_DIR/idbloader-a.img"; then
+        echo "slot A already holds the shipped firmware"; return
+    fi
+    refuse_downgrade "running firmware" "$(running_version)"
+    refuse_downgrade "slot B (last confirmed)" "$(slot_version "$disk" $IDB_B $ITB_B)"
+    if ! dd if="$disk" bs=512 skip=$IDB_B count=1 status=none | tr -d '\0' | grep -q .; then
+        echo "warning: slot B is empty, this update has no fallback (run 'install' on fresh disks)" >&2
+        [[ ${FORCE:-} == yes ]] || die "set FORCE=yes to continue"
+    fi
+    write_slot "$disk" $IDB_A $ITB_A "$FW_DIR/idbloader-a.img"
+    echo "reboot to try $(shipped_version); run 'dotos-firmware commit' after a good boot"
+}
+
+cmd_commit() {
+    local disk=$1
+    [[ $(running_version) == "$(shipped_version)" ]] ||
+        { echo "running firmware is not the shipped one; nothing to commit"; return; }
+    slot_matches "$disk" $IDB_A $ITB_A "$FW_DIR/idbloader-a.img" ||
+        { echo "slot A differs from shipped firmware; nothing to commit"; return; }
+    if slot_matches "$disk" $IDB_B $ITB_B "$FW_DIR/idbloader-b.img"; then
+        echo "slot B already confirmed"; return
+    fi
+    refuse_downgrade "slot B (last confirmed)" "$(slot_version "$disk" $IDB_B $ITB_B)"
+    write_slot "$disk" $IDB_B $ITB_B "$FW_DIR/idbloader-b.img"
+}
+
+cmd_install() {
+    local disk=$1
+    write_slot "$disk" $IDB_B $ITB_B "$FW_DIR/idbloader-b.img"
+    write_slot "$disk" $IDB_A $ITB_A "$FW_DIR/idbloader-a.img"
+}
+
+main() {
+    local cmd=${1:-status} disk=${2:-}
+    [[ $EUID -eq 0 ]] || die "must run as root"
+    [[ -n $disk ]] || disk=$(find_disk)
+    [[ -b $disk ]] || die "$disk is not a block device"
+    [[ $cmd == status ]] || check_layout "$disk"
+    case $cmd in
+        status|update|commit|install) "cmd_$cmd" "$disk" ;;
+        *) die "usage: dotos-firmware {status|update|commit|install} [disk]" ;;
+    esac
+}
+
+main "$@"
