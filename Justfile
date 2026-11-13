@@ -17,9 +17,11 @@ sudo_prefix := if env("NOSUDO", "") == "" { "sudo " } else { "" }
 test IMAGE=image_name:
     just bcvk build-and-test {{IMAGE}}
 
-# Extra ARGS are passed to the container build (e.g. --cache-from/--cache-to in CI)
+# Extra ARGS are passed to the container build (e.g. --cache-from/--cache-to in CI).
+# Images with a firmware/ directory get its version from git history.
 build $image_name=image_name *ARGS:
-    {{sudo_prefix}}{{container_runtime}} build --build-arg "DOTOS_VERSION={{version}}" --build-arg "DOTOS_COMMIT={{commit}}" {{ARGS}} -f {{image_name}}/Containerfile -t "${image_name}-bootc:latest" .
+    fw_version=$(scripts/firmware-version.sh {{image_name}}/firmware) && \
+    {{sudo_prefix}}{{container_runtime}} build --build-arg "DOTOS_VERSION={{version}}" --build-arg "DOTOS_COMMIT={{commit}}" --build-arg "FIRMWARE_LOCALVERSION=$fw_version" {{ARGS}} -f {{image_name}}/Containerfile -t "${image_name}-bootc:latest" .
 
 bootc $image_name=image_name $image_tag=image_tag *ARGS:
     sudo {{container_runtime}} run \

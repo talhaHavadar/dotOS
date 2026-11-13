@@ -3,13 +3,31 @@
 #   idbloader-a.img  TPL+SPL loading u-boot.itb from sector 0x4000 (slot A)
 #   idbloader-b.img  TPL+SPL loading u-boot.itb from sector 0x6000 (slot B)
 #   u-boot.itb       BL31 + U-Boot + DT, identical for both slots
-#   VERSION          U-Boot release string, e.g. 2026.04-dotos.1
-# Usage: build.sh <u-boot src> <tf-a src> <localversion>
+#   VERSION          U-Boot release string, e.g. 2026.04-dotos.7.g1a2b3c4
+# Usage: build.sh <localversion>, from scripts/firmware-version.sh (`just build`
+# passes it). Every firmware input lives next to this script: sources (pinned
+# tarballs), patches/, deps.sh.
 set -xeuo pipefail
 
-uboot=$1 tfa=$2 localversion=$3
+localversion=${1:-}
+if [ -z "$localversion" ]; then
+    echo "build.sh: no localversion; build with \`just build rockpie\`" >&2
+    exit 1
+fi
+here=$(dirname "$(realpath "$0")")
 out=/output
 mkdir -p "$out"
+
+# shellcheck source=sources
+. "$here/sources"
+src=/src uboot=/src/u-boot tfa=/src/tf-a
+mkdir -p "$uboot" "$tfa"
+curl -fsSL -o "$src/u-boot.tar.gz" "https://github.com/u-boot/u-boot/archive/refs/tags/${UBOOT_VERSION}.tar.gz"
+curl -fsSL -o "$src/tf-a.tar.gz" "https://github.com/ARM-software/arm-trusted-firmware/archive/refs/tags/${TFA_VERSION}.tar.gz"
+printf '%s  %s\n' "$UBOOT_SHA256" "$src/u-boot.tar.gz" "$TFA_SHA256" "$src/tf-a.tar.gz" | sha256sum -c
+tar xzf "$src/u-boot.tar.gz" --strip-components=1 -C "$uboot"
+tar xzf "$src/tf-a.tar.gz" --strip-components=1 -C "$tfa"
+for p in "$here"/patches/u-boot/*.patch; do patch -d "$uboot" -p1 < "$p"; done
 
 # Native on arm64; cross-compile elsewhere (local builds on x86)
 if [ "$(uname -m)" != aarch64 ]; then
