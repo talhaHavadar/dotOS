@@ -1,0 +1,32 @@
+arm: dts: rockchip: rock-pi-e: keep upstream vcc_host_5v for the OS
+
+U-Boot's rk3328-rock-pi-e-base-u-boot.dtsi made vcc_host_5v switchable
+(dropped regulator-always-on/boot-on) and set it as phy-supply of
+u2phy_host. On the EFI boot path U-Boot passes this control DT to the
+OS, and Debian's 7.3.4 kernel then hits timer/delayed-work memory
+corruption and panics on most boots (ROCK Pi E v1.21, dotOS test plan
+T3.1). Upstream Linux keeps the regulator always on with no phy-supply.
+
+Drop the override so the DT handed to the OS matches upstream Linux.
+Applies to U-Boot v2026.04 (88dc2788).
+
+diff --git a/arch/arm/dts/rk3328-rock-pi-e-base-u-boot.dtsi b/arch/arm/dts/rk3328-rock-pi-e-base-u-boot.dtsi
+index a30adb0b..53c8e999 100644
+--- a/arch/arm/dts/rk3328-rock-pi-e-base-u-boot.dtsi
++++ b/arch/arm/dts/rk3328-rock-pi-e-base-u-boot.dtsi
+@@ -34,15 +34,6 @@
+ 	};
+ };
+ 
+-&u2phy_host {
+-	phy-supply = <&vcc_host_5v>;
+-};
+-
+-&vcc_host_5v {
+-	/delete-property/ regulator-always-on;
+-	/delete-property/ regulator-boot-on;
+-};
+-
+ &vcc_sd {
+ 	bootph-pre-ram;
+ };

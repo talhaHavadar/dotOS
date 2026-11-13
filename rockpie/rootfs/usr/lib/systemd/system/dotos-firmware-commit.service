@@ -1,0 +1,14 @@
+[Unit]
+Description=Confirm the running U-Boot firmware into the fallback slot
+# A boot that reached multi-user ran the firmware in slot A well enough;
+# `commit` only writes when that firmware is the one this image ships and
+# slot B does not hold it yet, so this is a no-op on most boots.
+After=multi-user.target
+ConditionPathExists=/usr/lib/u-boot/rock-pi-e/VERSION
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/dotos-firmware commit
+
+[Install]
+WantedBy=multi-user.target

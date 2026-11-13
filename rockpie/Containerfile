@@ -1,0 +1,60 @@
+ARG BASE_IMAGE=ghcr.io/talhahavadar/dotos-base:latest
+
+# Radxa ROCK Pi E (RK3328). Firmware: mainline U-Boot + TF-A in a two-slot
+# layout below the first partition (see rockpie/rootfs/usr/bin/dotos-firmware
+# and `just disk-image-embedded`).
+FROM docker.io/library/debian:unstable AS firmware
+
+ARG UBOOT_VERSION=v2026.04
+ARG UBOOT_SHA256=fcf947fe716e77b698208adb5c2fd7240fc629ca46df8e1ed35d64cbbe42219d
+ARG TFA_VERSION=v2.13.0
+ARG TFA_SHA256=a0798acdac86101019f2e53c80846950c7a658314381c48c39a86f6b9fc70173
+# Bump on every firmware change: dotos-firmware orders versions with `sort -V`
+# and refuses to install an older one
+ARG FIRMWARE_LOCALVERSION=-dotos.1
+
+RUN --mount=type=cache,dst=/var/cache/apt,sharing=locked \
+    --mount=type=cache,dst=/var/lib/apt/lists,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    apt update -y && \
+    apt install -y --no-install-recommends bc bison build-essential ca-certificates curl \
+        device-tree-compiler flex libgnutls28-dev libssl-dev patch python3 python3-libfdt \
+        python3-pyelftools python3-setuptools uuid-dev && \
+    if [ "$(uname -m)" != aarch64 ]; then apt install -y --no-install-recommends gcc-aarch64-linux-gnu; fi
+
+# Release tarballs, not git: pinned by checksum, and without .git U-Boot's
+# version string gets no "+"/"-dirty" suffix
+WORKDIR /src
+RUN curl -fsSL -o u-boot.tar.gz "https://github.com/u-boot/u-boot/archive/refs/tags/${UBOOT_VERSION}.tar.gz" && \
+    curl -fsSL -o tf-a.tar.gz "https://github.com/ARM-software/arm-trusted-firmware/archive/refs/tags/${TFA_VERSION}.tar.gz" && \
+    printf '%s  u-boot.tar.gz\n%s  tf-a.tar.gz\n' "$UBOOT_SHA256" "$TFA_SHA256" | sha256sum -c && \
+    mkdir u-boot tf-a && \
+    tar xzf u-boot.tar.gz --strip-components=1 -C u-boot && \
+    tar xzf tf-a.tar.gz --strip-components=1 -C tf-a
+
+RUN --mount=type=bind,source=rockpie/firmware,target=/ctx \
+    for p in /ctx/patches/u-boot/*.patch; do patch -d u-boot -p1 < "$p"; done && \
+    /ctx/build.sh /src/u-boot /src/tf-a "$FIRMWARE_LOCALVERSION"
+
+FROM ${BASE_IMAGE}
+
+COPY rockpie/rootfs/ /
+COPY --from=firmware /output/ /usr/lib/u-boot/rock-pi-e/
+
+# Before the initramfs rebuild below, which embeds os-release
+RUN --mount=type=bind,source=scripts/os-release.sh,target=/ctx/os-release.sh \
+    /ctx/os-release.sh variant rockpie "ROCK Pi E"
+
+# Confirm a good firmware boot into the fallback slot on every boot
+RUN systemctl enable dotos-firmware-commit.service
+
+# (/root links to /var/roothome; /var is a tmpfs here and stays empty)
+RUN --mount=type=tmpfs,dst=/tmp --mount=type=tmpfs,dst=/var \
+    --mount=type=bind,source=scripts/initramfs.sh,target=/ctx/initramfs.sh \
+    mkdir -p /var/roothome /var/tmp && \
+    /ctx/initramfs.sh
+
+LABEL org.opencontainers.image.title="dotOS ROCK Pi E" \
+      org.opencontainers.image.description="dotOS for the Radxa ROCK Pi E, with two-slot U-Boot firmware"
+
+RUN bootc container lint

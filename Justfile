@@ -38,6 +38,72 @@ disk-image $image_name=image_name $image_tag=image_tag $base_dir=base_dir $files
     fi
     just bootc $image_name $image_tag install to-disk --composefs-backend --via-loopback /data/bootable.img --filesystem "${filesystem}" --wipe --bootloader systemd {{ARGS}}
 
+# Disk image for boards that boot firmware from raw sectors: a GPT whose first
+# partition (the ESP) starts after a reserved area (A/B firmware slots), then
+# `bootc install to-filesystem`, then the image's own `dotos-firmware install`
+# if it ships one. Must run on the image's architecture: under qemu-user bootc
+# install fails (setns, fs-verity ioctls). Writes <base_dir>/<name>-embedded.img;
+# ARGS go to `bootc install` (e.g. --target-imgref, --root-ssh-authorized-keys).
+# Tunables: EMBEDDED_RESERVED_MIB (16), EMBEDDED_ESP_MIB (1024), EMBEDDED_SIZE (8G)
+disk-image-embedded $image_name=image_name $image_tag=image_tag $base_dir=base_dir $filesystem=filesystem *ARGS:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    image="{{ if image_name =~ '/' { if image_name =~ ':[^/]+$' { image_name } else { image_name + ":" + image_tag } } else { image_name + "-bootc:" + image_tag } }}"
+    name="${image_name##*/}"; name="${name%%:*}"
+    out="$(realpath "${base_dir}")/${name}-embedded.img"
+    reserved_mib="${EMBEDDED_RESERVED_MIB:-16}"
+    esp_mib="${EMBEDDED_ESP_MIB:-1024}"
+    size="${EMBEDDED_SIZE:-8G}"
+    sudo="{{sudo_prefix}}"
+    case "$(uname -m)" in
+        aarch64) root_type=b921b045-1df0-41c3-af44-4c6f280d3fae ;;
+        x86_64)  root_type=4f68bce3-e8cd-4db1-96e7-fbcaf984b709 ;;
+        *) echo "unsupported architecture $(uname -m)" >&2; exit 1 ;;
+    esac
+    case "${filesystem}" in
+        ext4)  mkfs=(mkfs.ext4 -q -O verity -L root) ;;
+        btrfs) mkfs=(mkfs.btrfs -q -L root) ;;
+        *) echo "composefs needs fs-verity: use ext4 or btrfs, not ${filesystem}" >&2; exit 1 ;;
+    esac
+
+    mnt=$(mktemp -d)
+    loop=
+    cleanup() {
+        set +e
+        mountpoint -q "$mnt" && $sudo umount -R "$mnt"
+        [ -n "$loop" ] && $sudo losetup -d "$loop"
+        rmdir "$mnt"
+    }
+    trap cleanup EXIT
+
+    rm -f "$out"
+    truncate -s "$size" "$out"
+    printf 'label: gpt\nfirst-lba: %s\nstart=%sMiB, size=%sMiB, type=uefi, name=EFI-SYSTEM\ntype=%s, name=root\n' \
+        "$((reserved_mib * 2048))" "$reserved_mib" "$esp_mib" "$root_type" | sfdisk -q "$out"
+    loop=$($sudo losetup -Pf --show "$out")
+    $sudo udevadm settle || true
+    $sudo mkfs.vfat -F32 -n EFI-SYSTEM "${loop}p1"
+    $sudo "${mkfs[@]}" "${loop}p2"
+    $sudo mount "${loop}p2" "$mnt"
+    $sudo mkdir -p "$mnt/boot"
+    $sudo mount "${loop}p1" "$mnt/boot"
+
+    $sudo {{container_runtime}} run --rm --privileged --pid=host \
+        {{options}} \
+        -v /dev:/dev \
+        -v "$mnt:/target" \
+        "$image" bootc install to-filesystem --composefs-backend --bootloader systemd --generic-image {{ARGS}} /target
+    $sudo umount -R "$mnt"
+
+    # Raw-sector firmware (A/B slots) comes from the image itself
+    if $sudo {{container_runtime}} run --rm "$image" test -x /usr/bin/dotos-firmware; then
+        $sudo {{container_runtime}} run --rm --privileged -v /dev:/dev "$image" dotos-firmware install "$loop"
+    fi
+
+    $sudo losetup -d "$loop"; loop=
+    $sudo chown "$(id -u):$(id -g)" "$out"
+    echo "$out"
+
 rechunk $image_name=image_name:
     #!/usr/bin/env bash
     export CHUNKAH_CONFIG_STR="$(podman inspect "${image_name}-bootc")"
