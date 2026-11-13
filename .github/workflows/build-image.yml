@@ -21,6 +21,16 @@ on:
         required: false
         type: string
         default: ""
+      arches:
+        description: JSON list of architectures to build (amd64, arm64)
+        required: false
+        type: string
+        default: '["amd64", "arm64"]'
+      disk-image:
+        description: Also make a disk image with `just disk-image-embedded` and upload it as an artifact
+        required: false
+        type: boolean
+        default: false
 env:
   IMAGE: ${{ inputs.image }}
   VERSION_TAG: ${{ inputs.version-tag }}
@@ -66,16 +76,12 @@ jobs:
       # One architecture failing must not cancel the other's cargo build
       fail-fast: false
       matrix:
-        include:
-          - arch: amd64
-            runner: ubuntu-26.04
-          - arch: arm64
-            runner: ubuntu-26.04-arm
+        arch: ${{ fromJSON(inputs.arches) }}
     # Native runner per architecture: no qemu-user (bootc's build and install
     # steps do not work under it). Needs buildah >= 1.39 (podman >= 5.4): older
     # versions leave bind-mounted scripts out of the layer cache key, so script
     # changes would not rebuild
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-26.04-arm' || 'ubuntu-26.04' }}
     permissions:
       contents: read
       packages: write
@@ -149,6 +155,39 @@ jobs:
         with:
           path: ${{ env.BUILDAH_CACHE_DIR }}
           key: ${{ runner.os }}-${{ runner.arch }}-buildah-${{ inputs.image }}-${{ github.run_id }}
+      # Uses the same Justfile recipe as local builds, so CI exercises it on
+      # every run; before the push, so an image that cannot be installed is
+      # never published. Native runner only: bootc install fails under qemu-user.
+      - name: Make disk image
+        if: inputs.disk-image
+        env:
+          # The runner has no SELinux; the recipe would otherwise bind /sys/fs/selinux
+          BUILD_SELINUX: "false"
+        run: |
+          for tool in sfdisk mkfs.vfat mkfs.ext4 zstd; do
+            command -v "$tool" >/dev/null || MISSING=1
+          done
+          if [ -n "${MISSING:-}" ]; then
+            sudo apt-get update && sudo apt-get install -y fdisk dosfstools e2fsprogs zstd
+          fi
+          out="$RUNNER_TEMP/disk"
+          mkdir -p "$out"
+          # Installed systems follow the published tag for `bootc upgrade`
+          just disk-image-embedded "$IMAGE" latest "$out" ext4 \
+            --target-imgref "${IMAGE_REGISTRY}/${IMAGE_NAME}:${VERSION_TAG:-latest}"
+          zstd -T0 -10 --rm "$out/${IMAGE}-embedded.img" \
+            -o "$out/${IMAGE_NAME}-${VERSION_TAG:-$DATE_TAG}-${ARCH}.img.zst"
+          ls -l "$out"
+      - name: Upload disk image
+        if: inputs.disk-image
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.IMAGE_NAME }}-${{ env.VERSION_TAG || env.DATE_TAG }}-${{ matrix.arch }}-disk-image
+          path: ${{ runner.temp }}/disk/*.img.zst
+          # Already zstd-compressed
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14
       # Per-architecture tags (<tag>-amd64, <tag>-arm64); the manifest job
       # below publishes the plain tags.
       - name: Push to GHCR
@@ -174,6 +213,7 @@ jobs:
       IMAGE_REGISTRY: ${{ needs.prepare.outputs.registry }}
       IMAGE_NAME: ${{ needs.prepare.outputs.name }}
       DATE_TAG: ${{ needs.prepare.outputs.date-tag }}
+      ARCHES: ${{ join(fromJSON(inputs.arches), ' ') }}
     steps:
       - name: Login to GitHub Container Registry
         run: |
@@ -190,7 +230,7 @@ jobs:
             ref="${IMAGE_REGISTRY}/${IMAGE_NAME}:${tag}"
             podman manifest rm "$ref" 2>/dev/null || true
             podman manifest create "$ref"
-            for arch in amd64 arm64; do
+            for arch in $ARCHES; do
               podman manifest add "$ref" "docker://${ref}-${arch}"
             done
             podman manifest push --all "$ref" "docker://${ref}"
