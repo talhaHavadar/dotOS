@@ -16,6 +16,8 @@ rpi-imager --cli bootable.img <block device>
 
 `dev` images currently uses the published `base` images in github container registry. If you want to use locally build base image please change the Containerfile accordingly and then you can build as usual shown below.
 
+Published images are multi-arch (amd64 and arm64): CI builds each architecture natively and pushes a manifest per tag (`latest`, the date, release tags), with the per-architecture images also available as `<tag>-amd64` and `<tag>-arm64`.
+
 ### Building
 
 ```shell
