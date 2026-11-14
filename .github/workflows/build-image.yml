@@ -177,8 +177,8 @@ jobs:
           # Installed systems follow the published tag for `bootc upgrade`
           just disk-image-embedded "$IMAGE" latest "$out" ext4 \
             --target-imgref "${IMAGE_REGISTRY}/${IMAGE_NAME}:${VERSION_TAG:-latest}"
-          zstd -T0 -10 --rm "$out/${IMAGE}-embedded.img" \
-            -o "$out/${IMAGE_NAME}-${VERSION_TAG:-$DATE_TAG}-${ARCH}.img.zst"
+          mv "$out/${IMAGE}-embedded.img.zst" \
+            "$out/${IMAGE_NAME}-${VERSION_TAG:-$DATE_TAG}-${ARCH}.img.zst"
           ls -l "$out"
       - name: Upload disk image
         if: inputs.disk-image
