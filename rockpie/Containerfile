@@ -30,6 +30,12 @@ RUN --mount=type=bind,source=scripts/os-release.sh,target=/ctx/os-release.sh \
 # Confirm a good firmware boot into the fallback slot on every boot
 RUN systemctl enable dotos-firmware-commit.service
 
+# Don't refresh the boot loader random seed from the OS: bootc mounts /boot
+# read-only, so the unit fails on every boot. systemd-boot still refreshes
+# the seed itself at boot, mixed with the RK3328 hardware RNG that U-Boot
+# exposes through EFI_RNG_PROTOCOL.
+RUN systemctl mask systemd-boot-random-seed.service
+
 # (/root links to /var/roothome; /var is a tmpfs here and stays empty)
 RUN --mount=type=tmpfs,dst=/tmp --mount=type=tmpfs,dst=/var \
     --mount=type=bind,source=scripts/initramfs.sh,target=/ctx/initramfs.sh \
