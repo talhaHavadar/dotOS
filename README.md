@@ -21,10 +21,12 @@ first 16 MiB free (`EMBEDDED_RESERVED_MIB`), installs with
 `dotos-firmware install` to write the A/B firmware slots.
 
 ```shell
-# on an arm64 machine (bootc install does not work under qemu-user);
-# the recipe uses sudo for its root steps itself
+# bootc install does not work under qemu-user, so anywhere but arm64 Linux
+# (e.g. macOS) this runs in a Lima VM; VM_KEEP=1 keeps it for the next run.
+# The recipe uses sudo for its root steps itself.
 just disk-image-embedded ghcr.io/talhahavadar/dotos-rockpie latest .
-# writes ./dotos-rockpie-embedded.img; flash it like any other image
+# writes ./dotos-rockpie-embedded.img.zst; flash it with e.g.
+# zstdcat dotos-rockpie-embedded.img.zst | sudo dd of=/dev/sdX bs=4M conv=fsync
 ```
 
 CI builds the same recipe for every `rockpie` build and uploads

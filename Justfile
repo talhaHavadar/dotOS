@@ -44,10 +44,19 @@ disk-image $image_name=image_name $image_tag=image_tag $base_dir=base_dir $files
 # partition (the ESP) starts after a reserved area (A/B firmware slots), then
 # `bootc install to-filesystem`, then the image's own `dotos-firmware install`
 # if it ships one. Must run on the image's architecture: under qemu-user bootc
-# install fails (setns, fs-verity ioctls). Writes <base_dir>/<name>-embedded.img;
-# ARGS go to `bootc install` (e.g. --target-imgref, --root-ssh-authorized-keys).
+# install fails (setns, fs-verity ioctls), so off native Linux/aarch64 it runs
+# in a VM (scripts/linux-run.sh; VM_BACKEND, VM_KEEP). Writes
+# <base_dir>/<name>-embedded.img.zst; ARGS go to `bootc install` (e.g.
+# --target-imgref, --root-ssh-authorized-keys).
 # Tunables: EMBEDDED_RESERVED_MIB (16), EMBEDDED_ESP_MIB (1024), EMBEDDED_SIZE (8G)
 disk-image-embedded $image_name=image_name $image_tag=image_tag $base_dir=base_dir $filesystem=filesystem *ARGS:
+    scripts/linux-run.sh --arch aarch64 --mount "$base_dir" --env-match '^EMBEDDED_' \
+        --image "{{ if image_name =~ '/' { if image_name =~ ':[^/]+$' { image_name } else { image_name + ":" + image_tag } } else { image_name + "-bootc:" + image_tag } }}" \
+        --runtime "{{sudo_prefix}}{{container_runtime}}" \
+        -- just _disk-image-embedded "$image_name" "$image_tag" "$base_dir" "$filesystem" {{ARGS}}
+
+[private]
+_disk-image-embedded $image_name $image_tag $base_dir $filesystem *ARGS:
     #!/usr/bin/env bash
     set -euo pipefail
     image="{{ if image_name =~ '/' { if image_name =~ ':[^/]+$' { image_name } else { image_name + ":" + image_tag } } else { image_name + "-bootc:" + image_tag } }}"
@@ -97,14 +106,21 @@ disk-image-embedded $image_name=image_name $image_tag=image_tag $base_dir=base_d
         "$image" bootc install to-filesystem --composefs-backend --bootloader systemd --generic-image {{ARGS}} /target
     $sudo umount -R "$mnt"
 
-    # Raw-sector firmware (A/B slots) comes from the image itself
-    if $sudo {{container_runtime}} run --rm "$image" test -x /usr/bin/dotos-firmware; then
-        $sudo {{container_runtime}} run --rm --privileged -v /dev:/dev "$image" dotos-firmware install "$loop"
-    fi
+    # Raw-sector firmware (A/B slots) comes from the image itself. Unlabeled:
+    # SELinux keeps a confined container from even loading the image's libc,
+    # and only `test` saying no (1) means the image has no firmware.
+    rc=0
+    $sudo {{container_runtime}} run --rm --security-opt label=disable "$image" test -x /usr/bin/dotos-firmware || rc=$?
+    case $rc in
+        0) $sudo {{container_runtime}} run --rm --privileged -v /dev:/dev "$image" dotos-firmware install "$loop" ;;
+        1) ;;
+        *) echo "could not check $image for dotos-firmware (exit $rc)" >&2; exit 1 ;;
+    esac
 
     $sudo losetup -d "$loop"; loop=
     $sudo chown "$(id -u):$(id -g)" "$out"
-    echo "$out"
+    zstd -q -T0 -10 --rm -f "$out"
+    echo "$out.zst"
 
 rechunk $image_name=image_name:
     #!/usr/bin/env bash
