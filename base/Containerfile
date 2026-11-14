@@ -48,6 +48,21 @@ RUN systemctl enable systemd-networkd systemd-resolved ssh && \
     printf 'network:\n  version: 2\n  ethernets:\n    all-en:\n      match:\n        name: en*\n      dhcp4: true\n      dhcp4-overrides:\n        use-domains: true\n      dhcp6: true\n      dhcp6-overrides:\n        use-domains: true\n    all-eth:\n      match:\n        name: eth*\n      dhcp4: true\n      dhcp4-overrides:\n        use-domains: true\n      dhcp6: true\n      dhcp6-overrides:\n        use-domains: true\n' > /etc/netplan/90-default.yaml && \
     sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config || true
 
+# Per-machine identity, generated on each install's first boot instead of
+# shipping the build's: an empty machine-id makes systemd create one (and
+# marks the boot as first boot), and every machine gets its own SSH host keys.
+# Key generation runs whenever keys are missing, not only on first boot, so
+# machines upgrading from an image that shipped keys (removed by the /etc
+# merge) still get new ones; ssh-keygen -A skips existing keys.
+# systemd-firstboot is masked: on first boot it would wait on the console for
+# locale, timezone and root password, which hangs headless machines.
+RUN rm -f /etc/ssh/ssh_host_*_key /etc/ssh/ssh_host_*_key.pub && \
+    : > /etc/machine-id && \
+    systemctl mask systemd-firstboot.service && \
+    mkdir -p /usr/lib/systemd/system/sshd-keygen.service.d && \
+    printf '[Unit]\nConditionFirstBoot=\nConditionPathIsReadWrite=/etc/ssh\nConditionPathIsSymbolicLink=!/etc/ssh\n' \
+        > /usr/lib/systemd/system/sshd-keygen.service.d/10-missing-keys.conf
+
 # dotOS identity (os-release, issue, motd); before the initramfs, which embeds os-release
 RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     /ctx/scripts/branding.sh /ctx/branding && \
