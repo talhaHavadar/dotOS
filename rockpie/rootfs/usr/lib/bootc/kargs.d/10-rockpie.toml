@@ -1,1 +1,14 @@
-kargs = ["console=ttyS2,1500000n8"]
+# The serial console doesn't answer the terminal queries systemd (in the initrd
+# and again after switching root) and the serial getty send to learn its name
+# and size; each query waits 333 ms for a reply, ~1 s per systemd start. Give
+# the answers up front. 80x24 is what the kernel assumes anyway; `stty` or
+# `resize` adjusts a login session.
+kargs = [
+    "console=ttyS2,1500000n8",
+    "systemd.tty.term.console=vt220",
+    "systemd.tty.rows.console=24",
+    "systemd.tty.columns.console=80",
+    "systemd.tty.term.ttyS2=vt220",
+    "systemd.tty.rows.ttyS2=24",
+    "systemd.tty.columns.ttyS2=80",
+]
