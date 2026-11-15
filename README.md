@@ -49,6 +49,17 @@ Builds need the full git history.
 
 Published images are multi-arch (amd64 and arm64): CI builds each architecture natively and pushes a manifest per tag (`latest`, the date, release tags), with the per-architecture images also available as `<tag>-amd64` and `<tag>-arm64`.
 
+Tags and what installed systems follow (`bootc upgrade` tracks the tag a system was installed from):
+
+| Source | Tags | Rebuilt |
+|---|---|---|
+| `main` | `latest`, `<date>` | every push, and weekly |
+| branch `release/vN` | `vN` (moving), `vN-<date>` | every push to the branch (or `gh workflow run build-base.yml --ref release/vN`) |
+| git tag `vX.Y` | `vX.Y` | once |
+
+For a release channel, branch `release/v1` from `main`, backport fixes to it, and install
+systems from `:v1` (e.g. `just disk-image-embedded ghcr.io/<owner>/dotos-rockpie v1 .`).
+
 ### Building
 
 ```shell

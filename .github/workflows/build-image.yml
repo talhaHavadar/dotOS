@@ -21,6 +21,13 @@ on:
         required: false
         type: string
         default: ""
+      channel-branch:
+        description: >-
+          Release branch (release/vN) to publish as the moving tag vN plus vN-<date>,
+          instead of latest/date; images built on base then use base:vN
+        required: false
+        type: string
+        default: ""
       arches:
         description: JSON list of architectures to build (amd64, arm64)
         required: false
@@ -33,7 +40,6 @@ on:
         default: false
 env:
   IMAGE: ${{ inputs.image }}
-  VERSION_TAG: ${{ inputs.version-tag }}
   GITHUB_EVENT_REPOSITORY_NAME: ${{ github.event.repository.name }}
   CONTAINER_RUNTIME: podman
   # Where buildah/podman keep RUN --mount=type=cache data when building as root
@@ -48,6 +54,8 @@ jobs:
       registry: ${{ steps.names.outputs.registry }}
       name: ${{ steps.names.outputs.name }}
       date-tag: ${{ steps.names.outputs.date-tag }}
+      version-tag: ${{ steps.names.outputs.version-tag }}
+      tags: ${{ steps.names.outputs.tags }}
       push: ${{ steps.names.outputs.push }}
     steps:
       - name: Compute names
@@ -56,17 +64,37 @@ jobs:
           REGISTRY: "ghcr.io/${{ github.repository_owner }}"
           # Published as <repo>-<image>, e.g. dotos-base
           NAME: "${{ github.event.repository.name }}-${{ inputs.image }}"
+          VERSION_TAG: ${{ inputs.version-tag }}
+          CHANNEL_BRANCH: ${{ inputs.channel-branch }}
           PUSH: >-
-            ${{ inputs.version-tag != '' ||
+            ${{ inputs.version-tag != '' || inputs.channel-branch != '' ||
 
                 (github.event_name != 'pull_request' &&
                  github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) }}
         run: |
+          date_tag=$(date -u +%Y%m%d)
+          # Release tag v1.0: that tag only. Release branch release/v1: the moving
+          # tag v1 (what installed systems follow) and v1-<date> (to roll back to).
+          # Default branch: latest and <date>.
+          if [ -n "$VERSION_TAG" ]; then
+            tags="$VERSION_TAG"
+          elif [ -n "$CHANNEL_BRANCH" ]; then
+            VERSION_TAG=${CHANNEL_BRANCH#release/}
+            case $VERSION_TAG in
+              v[0-9]*) ;;
+              *) echo "channel branch must be release/v<N>, not $CHANNEL_BRANCH" >&2; exit 1 ;;
+            esac
+            tags="$VERSION_TAG $VERSION_TAG-$date_tag"
+          else
+            tags="latest $date_tag"
+          fi
           # Registry paths must be lowercase
           {
             echo "registry=${REGISTRY,,}"
             echo "name=${NAME,,}"
-            echo "date-tag=$(date -u +%Y%m%d)"
+            echo "date-tag=$date_tag"
+            echo "version-tag=$VERSION_TAG"
+            echo "tags=$tags"
             echo "push=${PUSH}"
           } >> "$GITHUB_OUTPUT"
   build:
@@ -90,6 +118,8 @@ jobs:
       IMAGE_REGISTRY: ${{ needs.prepare.outputs.registry }}
       IMAGE_NAME: ${{ needs.prepare.outputs.name }}
       DATE_TAG: ${{ needs.prepare.outputs.date-tag }}
+      VERSION_TAG: ${{ needs.prepare.outputs.version-tag }}
+      TAGS: ${{ needs.prepare.outputs.tags }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -195,12 +225,7 @@ jobs:
       - name: Push to GHCR
         if: needs.prepare.outputs.push == 'true'
         run: |
-          if [ -n "$VERSION_TAG" ]; then
-            TAGS=("$VERSION_TAG")
-          else
-            TAGS=(latest "$DATE_TAG")
-          fi
-          for tag in "${TAGS[@]}"; do
+          for tag in $TAGS; do
             sudo podman push "${IMAGE}-bootc:latest" "docker://${IMAGE_REGISTRY}/${IMAGE_NAME}:${tag}-${ARCH}"
           done
   manifest:
@@ -214,7 +239,7 @@ jobs:
     env:
       IMAGE_REGISTRY: ${{ needs.prepare.outputs.registry }}
       IMAGE_NAME: ${{ needs.prepare.outputs.name }}
-      DATE_TAG: ${{ needs.prepare.outputs.date-tag }}
+      TAGS: ${{ needs.prepare.outputs.tags }}
       ARCHES: ${{ join(fromJSON(inputs.arches), ' ') }}
     steps:
       - name: Login to GitHub Container Registry
@@ -223,12 +248,7 @@ jobs:
             podman login ghcr.io -u "${{ github.actor }}" --password-stdin
       - name: Push multi-arch manifests
         run: |
-          if [ -n "$VERSION_TAG" ]; then
-            TAGS=("$VERSION_TAG")
-          else
-            TAGS=(latest "$DATE_TAG")
-          fi
-          for tag in "${TAGS[@]}"; do
+          for tag in $TAGS; do
             ref="${IMAGE_REGISTRY}/${IMAGE_NAME}:${tag}"
             podman manifest rm "$ref" 2>/dev/null || true
             podman manifest create "$ref"

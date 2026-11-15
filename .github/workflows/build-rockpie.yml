@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - main
+      - "release/v*"
     paths:
       - "rockpie/**"
       - "scripts/initramfs.sh"
@@ -29,6 +30,7 @@ on:
     branches:
       - main
       - "v*"
+      - "release/v*"
   workflow_dispatch:
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch || github.ref }}
@@ -53,3 +55,6 @@ jobs:
       disk-image: true
       ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || '' }}
       version-tag: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && startsWith(github.event.workflow_run.head_branch, 'v') && github.event.workflow_run.head_branch || '' }}
+      # Release branch builds (pushed or dispatched base runs, pushes here):
+      # publish <image>:vN on top of base:vN
+      channel-branch: ${{ github.event_name == 'workflow_run' && (startsWith(github.event.workflow_run.head_branch, 'release/v') && github.event.workflow_run.head_branch || '') || (github.event_name != 'pull_request' && startsWith(github.ref_name, 'release/v') && github.ref_name || '') }}
