@@ -132,11 +132,12 @@ jobs:
         if: false
       - name: Check podman
         run: |
-          # The arm64 runner image may not ship podman
-          if ! command -v podman >/dev/null; then
-            sudo apt-get update && sudo apt-get install -y podman
+          # The arm64 runner image may not ship podman or skopeo
+          if ! command -v podman >/dev/null || ! command -v skopeo >/dev/null; then
+            sudo apt-get update && sudo apt-get install -y podman skopeo
           fi
           podman --version
+          skopeo --version
       - name: Install just
         uses: extractions/setup-just@v4
       # The build runs as root (`sudo podman` via the Justfile), so root needs
@@ -220,14 +221,36 @@ jobs:
           compression-level: 0
           if-no-files-found: error
           retention-days: 14
-      # Per-architecture tags (<tag>-amd64, <tag>-arm64); the manifest job
-      # below publishes the plain tags.
-      - name: Push to GHCR
+      # Pushed by digest, untagged; the manifest job below publishes the tags.
+      # `podman push` only learns the digest while pushing, and a tagless
+      # destination falls back to :latest, so export to an OCI layout first
+      # (fixing the digest) and copy that byte-for-byte to repo@digest.
+      - name: Push to GHCR by digest
         if: needs.prepare.outputs.push == 'true'
         run: |
-          for tag in $TAGS; do
-            sudo podman push "${IMAGE}-bootc:latest" "docker://${IMAGE_REGISTRY}/${IMAGE_NAME}:${tag}-${ARCH}"
-          done
+          oci="$RUNNER_TEMP/oci"
+          sudo rm -rf "$oci"
+          sudo podman push --digestfile "$RUNNER_TEMP/digest.root" "${IMAGE}-bootc:latest" "oci:${oci}:image"
+          digest=$(sudo cat "$RUNNER_TEMP/digest.root")
+          sudo skopeo copy --preserve-digests "oci:${oci}:image" \
+            "docker://${IMAGE_REGISTRY}/${IMAGE_NAME}@${digest}"
+          # The export is a second copy of the image; free the space
+          sudo rm -rf "$oci" "$RUNNER_TEMP/digest.root"
+          mkdir -p "$RUNNER_TEMP/digests"
+          echo "$digest" > "$RUNNER_TEMP/digests/${ARCH}"
+          echo "Pushed ${IMAGE_REGISTRY}/${IMAGE_NAME}@${digest}"
+      # Matrix job outputs would overwrite each other, so each architecture
+      # hands its digest to the manifest job as an artifact
+      - name: Upload digest
+        if: needs.prepare.outputs.push == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.IMAGE_NAME }}-digest-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/${{ matrix.arch }}
+          if-no-files-found: error
+          # A re-run of a failed build job uploads under the same name
+          overwrite: true
+          retention-days: 1
   manifest:
     name: Publish ${{ inputs.image }} manifest
     needs: [prepare, build]
@@ -242,6 +265,12 @@ jobs:
       TAGS: ${{ needs.prepare.outputs.tags }}
       ARCHES: ${{ join(fromJSON(inputs.arches), ' ') }}
     steps:
+      - name: Download digests
+        uses: actions/download-artifact@v8
+        with:
+          pattern: ${{ needs.prepare.outputs.name }}-digest-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
       - name: Login to GitHub Container Registry
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | \
@@ -253,7 +282,8 @@ jobs:
             podman manifest rm "$ref" 2>/dev/null || true
             podman manifest create "$ref"
             for arch in $ARCHES; do
-              podman manifest add "$ref" "docker://${ref}-${arch}"
+              digest=$(cat "$RUNNER_TEMP/digests/${arch}")
+              podman manifest add "$ref" "docker://${IMAGE_REGISTRY}/${IMAGE_NAME}@${digest}"
             done
             podman manifest push --all "$ref" "docker://${ref}"
           done
